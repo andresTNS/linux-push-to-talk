@@ -38,8 +38,9 @@ INITIAL_PROMPT = (
     "JavaScript, TypeScript, React, Node, database, endpoint, repository."
 )
 
-# Directorio de caché de HuggingFace
-CACHE_DIR = os.path.expanduser("~/.cache/huggingface/hub")
+# Directorio de caché de HuggingFace — respeta XDG_CACHE_HOME (KDE usa ~/.cachekde)
+_xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+CACHE_DIR = os.path.join(_xdg_cache, "huggingface", "hub")
 # -----------------------------------------------
 
 # ---------- Registro de modelos ----------------
