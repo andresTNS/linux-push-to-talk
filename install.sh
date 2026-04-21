@@ -20,6 +20,7 @@ info "Verificando dependencias del sistema..."
 MISSING=()
 command -v python3 &>/dev/null || MISSING+=("python3")
 command -v xdotool &>/dev/null || MISSING+=("xdotool")
+command -v xclip &>/dev/null   || MISSING+=("xclip")
 dpkg -l libportaudio2 &>/dev/null 2>&1 || MISSING+=("libportaudio2")
 
 if [ ${#MISSING[@]} -gt 0 ]; then
@@ -62,6 +63,7 @@ echo ""
 info "¡Instalación completada!"
 echo ""
 echo "  Mantén presionada F12 para dictar."
+echo "  Usa 'dictate --download-all' para predescargar todos los modelos."
 echo "  Estado del servicio:"
 systemctl --user status whisper-dictation --no-pager -l || true
 echo ""
