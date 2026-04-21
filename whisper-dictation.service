@@ -1,0 +1,16 @@
+[Unit]
+Description=Whisper Push-to-Talk Dictation
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/dictate
+Restart=on-failure
+RestartSec=5
+Environment=DISPLAY=:0
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target
