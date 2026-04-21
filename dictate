@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+exec ~/.local/share/whisper-dictation/bin/python3 ~/.local/bin/whisper-dictation.py "$@"
