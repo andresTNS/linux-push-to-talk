@@ -47,20 +47,21 @@ CACHE_DIR = os.path.join(_xdg_cache, "huggingface", "hub")
 # Todos los modelos faster-whisper con requisitos de RAM y nivel de calidad.
 # Solo los multilingual=True son candidatos para auto-selección.
 MODEL_REGISTRY = {
-    "tiny":             {"ram_mb": 200,  "quality": 1, "multilingual": True},
-    "tiny.en":          {"ram_mb": 200,  "quality": 1, "multilingual": False},
-    "base":             {"ram_mb": 300,  "quality": 2, "multilingual": True},
-    "base.en":          {"ram_mb": 300,  "quality": 2, "multilingual": False},
-    "small":            {"ram_mb": 500,  "quality": 3, "multilingual": True},
-    "small.en":         {"ram_mb": 500,  "quality": 3, "multilingual": False},
-    "medium":           {"ram_mb": 1500, "quality": 4, "multilingual": True},
-    "medium.en":        {"ram_mb": 1500, "quality": 4, "multilingual": False},
-    "large-v1":         {"ram_mb": 3000, "quality": 5, "multilingual": True},
-    "large-v2":         {"ram_mb": 3000, "quality": 6, "multilingual": True},
-    "large-v3":         {"ram_mb": 3000, "quality": 7, "multilingual": True},
-    "distil-large-v3":  {"ram_mb": 1500, "quality": 6, "multilingual": True},
-    "distil-medium.en": {"ram_mb": 800,  "quality": 4, "multilingual": False},
-    "distil-small.en":  {"ram_mb": 400,  "quality": 3, "multilingual": False},
+    # cpu_viable=False: modelos demasiado lentos en CPU puro (>60s por dictado)
+    "tiny":             {"ram_mb": 200,  "quality": 1, "multilingual": True,  "cpu_viable": True},
+    "tiny.en":          {"ram_mb": 200,  "quality": 1, "multilingual": False, "cpu_viable": True},
+    "base":             {"ram_mb": 300,  "quality": 2, "multilingual": True,  "cpu_viable": True},
+    "base.en":          {"ram_mb": 300,  "quality": 2, "multilingual": False, "cpu_viable": True},
+    "small":            {"ram_mb": 500,  "quality": 3, "multilingual": True,  "cpu_viable": True},
+    "small.en":         {"ram_mb": 500,  "quality": 3, "multilingual": False, "cpu_viable": True},
+    "medium":           {"ram_mb": 1500, "quality": 4, "multilingual": True,  "cpu_viable": True},
+    "medium.en":        {"ram_mb": 1500, "quality": 4, "multilingual": False, "cpu_viable": True},
+    "large-v1":         {"ram_mb": 3000, "quality": 5, "multilingual": True,  "cpu_viable": False},
+    "large-v2":         {"ram_mb": 3000, "quality": 6, "multilingual": True,  "cpu_viable": False},
+    "large-v3":         {"ram_mb": 3000, "quality": 7, "multilingual": True,  "cpu_viable": False},
+    "distil-large-v3":  {"ram_mb": 1500, "quality": 6, "multilingual": True,  "cpu_viable": True},
+    "distil-medium.en": {"ram_mb": 800,  "quality": 4, "multilingual": False, "cpu_viable": True},
+    "distil-small.en":  {"ram_mb": 400,  "quality": 3, "multilingual": False, "cpu_viable": True},
 }
 # -----------------------------------------------
 
@@ -91,12 +92,12 @@ def get_available_ram_mb():
 
 
 def auto_select_model():
-    """Elige el mejor modelo multilingüe que cabe en el 75% de la RAM disponible."""
+    """Elige el mejor modelo multilingüe y viable en CPU según RAM disponible."""
     available = get_available_ram_mb()
     usable = available * 0.75
     candidates = {
         k: v for k, v in MODEL_REGISTRY.items()
-        if v["ram_mb"] <= usable and v["multilingual"]
+        if v["ram_mb"] <= usable and v["multilingual"] and v["cpu_viable"]
     }
     if not candidates:
         print("[Auto] RAM insuficiente para cualquier modelo, usando tiny.")
