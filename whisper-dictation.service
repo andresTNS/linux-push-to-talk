@@ -9,6 +9,7 @@ ExecStart=%h/.local/bin/dictate
 Restart=on-failure
 RestartSec=5
 Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
 StandardOutput=journal
 StandardError=journal
 
