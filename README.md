@@ -56,5 +56,11 @@ journalctl --user -u whisper-dictation -f
 ## Probado en
 - Debian 12 (Bookworm) + KDE Plasma + X11
 
+## Frontend proposal
+A frontend proposal for visual configuration and operation is documented in:
+- `docs/frontend/FRONTEND-PROPOSAL.md`
+- `docs/frontend/UI-FLOWS.md`
+- `docs/frontend/IMPLEMENTATION-PLAN.md`
+
 ## Licencia
 MIT
