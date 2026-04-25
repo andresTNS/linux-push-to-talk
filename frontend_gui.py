@@ -5,6 +5,13 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from frontend_config import load_config, save_config
+from frontend_runtime import (
+    acquire_single_instance_lock,
+    ensure_autostart_entry,
+    get_runtime_command_preview,
+    read_runtime_snapshot,
+    sync_service_unit,
+)
 from frontend_service import (
     get_service_status,
     restart_service,
@@ -13,7 +20,7 @@ from frontend_service import (
     tail_service_logs,
 )
 
-MODELS = ["tiny", "base", "small", "medium", "large-v3"]
+MODELS = ["auto", "tiny", "base", "small", "medium", "distil-large-v3"]
 LANGUAGES = ["es", "en", "auto"]
 
 
@@ -27,6 +34,7 @@ class WhisperFrontendApp:
         self.status_var = tk.StringVar(value="Cargando estado...")
         self.mic_var = tk.StringVar(value="Micrófono: inactivo")
         self.log_var = tk.StringVar(value="Cargando logs...")
+        self.runtime_var = tk.StringVar(value="Sincronizando GUI con runtime...")
 
         self.key_var = tk.StringVar(value=self.config["key"])
         self.toggle_var = tk.BooleanVar(value=self.config["toggle"])
@@ -59,6 +67,10 @@ class WhisperFrontendApp:
         self._build_status_tab(status_tab)
         self._build_config_tab(config_tab)
         self._build_logs_tab(logs_tab)
+
+        footer = ttk.Frame(self.root, padding=(12, 0, 12, 12))
+        footer.pack(fill="x")
+        ttk.Label(footer, textvariable=self.runtime_var, justify="left").pack(anchor="w")
 
     def _build_status_tab(self, parent):
         actions = ttk.Frame(parent)
@@ -106,7 +118,8 @@ class WhisperFrontendApp:
                 f"Tecla: {self.key_var.get().upper()}\n"
                 f"Idioma: {self.language_var.get()}\n"
                 f"Modelo: {self.model_var.get()}\n"
-                f"Modo toggle: {'sí' if self.toggle_var.get() else 'no'}"
+                f"Modo toggle: {'sí' if self.toggle_var.get() else 'no'}\n"
+                f"Runtime: {get_runtime_command_preview()}"
             )
         )
 
@@ -118,9 +131,16 @@ class WhisperFrontendApp:
             "model": self.model_var.get(),
         }
         save_config(self.config)
+        ok, detail = sync_service_unit(self.config)
         self._update_summary()
-        self.mic_var.set("Micrófono: configuración guardada")
-        messagebox.showinfo("whisper-ptt", "Configuración guardada. Reinicia el servicio para aplicar cambios.")
+        if ok:
+            self.runtime_var.set(f"Runtime sincronizado: {detail}")
+            self.mic_var.set("Micrófono: configuración guardada y vinculada al servicio")
+            messagebox.showinfo("whisper-ptt", "Configuración guardada y sincronizada con systemd. Reinicia el servicio para aplicar cambios.")
+        else:
+            self.runtime_var.set(detail)
+            self.mic_var.set("Micrófono: configuración guardada, pero runtime no sincronizado")
+            messagebox.showwarning("whisper-ptt", detail)
 
     def _service_action(self, action):
         threading.Thread(target=self._run_service_action, args=(action,), daemon=True).start()
@@ -136,18 +156,23 @@ class WhisperFrontendApp:
     def _load_runtime_state(self):
         status = get_service_status()
         logs = tail_service_logs()
-        self.queue.put(("runtime", status, logs))
+        snapshot = read_runtime_snapshot()
+        self.queue.put(("runtime", status, {"logs": logs, "snapshot": snapshot}))
 
     def _poll_queue(self):
         try:
             while True:
                 event, value, payload = self.queue.get_nowait()
                 if event == "runtime":
+                    snapshot = payload["snapshot"]
                     self.status_var.set(f"Servicio: {value}")
                     self.mic_var.set("Micrófono: listo" if value == "active" else "Micrófono: inactivo")
+                    self.runtime_var.set(
+                        f"Config: {snapshot['config_path']} | ExecStart: {snapshot['service_exec'] or 'no definido'} | Autostart: {snapshot['autostart_path']}"
+                    )
                     self.logs_text.configure(state="normal")
                     self.logs_text.delete("1.0", "end")
-                    self.logs_text.insert("1.0", payload or "Sin logs disponibles")
+                    self.logs_text.insert("1.0", payload["logs"] or "Sin logs disponibles")
                     self.logs_text.configure(state="disabled")
                 elif event == "service_action":
                     if value == 0:
@@ -164,6 +189,14 @@ class WhisperFrontendApp:
 
 
 def main():
+    if not acquire_single_instance_lock():
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showinfo("whisper-ptt", "La GUI ya está ejecutándose en otra instancia.")
+        root.destroy()
+        return
+
+    ensure_autostart_entry()
     root = tk.Tk()
     app = WhisperFrontendApp(root)
     root.mainloop()
