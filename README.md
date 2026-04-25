@@ -87,11 +87,23 @@ journalctl --user -u whisper-dictation -n 50 --no-pager
 ## Probado en
 - Debian 12 (Bookworm) + KDE Plasma + X11
 
-## Frontend proposal
-A frontend proposal for visual configuration and operation is documented in:
+## Frontend GUI
+La primera iteración funcional de GUI ya incluye:
+- pantalla de estado del servicio
+- configuración visual de tecla, idioma, modelo y modo toggle
+- recarga de logs del servicio
+- operaciones de iniciar, detener y reiniciar servicio
+
+Para abrir la GUI instalada:
+```bash
+whisper-ptt-gui
+```
+
+Documentación de frontend:
 - `docs/frontend/FRONTEND-PROPOSAL.md`
 - `docs/frontend/UI-FLOWS.md`
 - `docs/frontend/IMPLEMENTATION-PLAN.md`
+- `docs/frontend/TKINTER-THREADING-ARCHITECTURE.md`
 
 ## Licencia
 MIT
