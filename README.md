@@ -31,6 +31,7 @@ bash install.sh
 ```
 
 El instalador:
+- detecta automáticamente si está corriendo por primera vez (`INSTALL`) o si está actualizando una instalación existente (`UPDATE`)
 - verifica e instala dependencias del sistema
 - crea el entorno virtual en `~/.local/share/whisper-dictation`
 - instala dependencias Python
@@ -55,10 +56,12 @@ Guía completa de instalación y pruebas:
 
 ### Opciones avanzadas
 ```bash
-dictate --key F10          # Cambiar tecla
-dictate --model medium     # Más preciso (más lento)
-dictate --language auto    # Detectar idioma automáticamente
-dictate --toggle           # Modo toggle en vez de mantener presionado
+dictate --key F10                # Cambiar tecla
+dictate --model medium           # Más preciso (más lento)
+dictate --model distil-large-v3  # Variante distil-whisper
+dictate --language auto          # Detectar idioma automáticamente
+dictate --toggle                 # Modo toggle en vez de mantener presionado
+dictate --download-all           # Pre-descarga todos los modelos registrados
 ```
 
 ### Controlar el servicio
@@ -79,10 +82,14 @@ journalctl --user -u whisper-dictation -n 50 --no-pager
 ## Modelos disponibles
 | Modelo | Velocidad | Precisión | RAM aprox |
 |--------|-----------|-----------|-----------|
-| tiny   | Muy rápido | Básica   | 200 MB    |
-| base   | Rápido     | Buena    | 300 MB    |
-| small  | Medio      | Muy buena| 500 MB    |
-| medium | Lento      | Excelente| 1.5 GB    |
+| tiny / tiny.en | Muy rápido | Básica | 200 MB |
+| base / base.en | Rápido | Buena | 300 MB |
+| small / small.en | Medio | Muy buena | 500 MB |
+| medium / medium.en | Lento | Excelente | 1.5 GB |
+| large-v1 / large-v2 / large-v3 / large-v3-turbo | Más lento | Máxima | 2-3+ GB |
+| distil-small.en / distil-medium.en / distil-large-v2 / distil-large-v3 | Optimizado | Muy alta | variable |
+
+Si un modelo no está cacheado localmente, se descarga automáticamente antes del primer uso con una notificación visible.
 
 ## Probado en
 - Debian 12 (Bookworm) + KDE Plasma + X11
