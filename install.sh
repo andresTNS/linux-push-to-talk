@@ -41,7 +41,11 @@ info "Instalando archivos..."
 mkdir -p "$HOME/.local/bin"
 cp whisper-dictation.py "$HOME/.local/bin/whisper-dictation.py"
 cp dictate "$HOME/.local/bin/dictate"
+cp frontend_gui.py "$HOME/.local/bin/whisper-ptt-gui"
+cp frontend_config.py "$HOME/.local/bin/frontend_config.py"
+cp frontend_service.py "$HOME/.local/bin/frontend_service.py"
 chmod +x "$HOME/.local/bin/dictate"
+chmod +x "$HOME/.local/bin/whisper-ptt-gui"
 
 # ── Servicio systemd ──────────────────────────────────────────────────────────
 info "Configurando servicio systemd..."
