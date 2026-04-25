@@ -19,15 +19,39 @@ en cualquier aplicación.
 - xdotool y portaudio19-dev
 
 ## Instalación
+### Paso a paso
+1. Clona este repositorio.
+2. Entra al directorio del proyecto.
+3. Ejecuta el instalador:
+
 ```bash
+git clone https://github.com/andresTNS/linux-push-to-talk.git
+cd linux-push-to-talk
 bash install.sh
 ```
+
+El instalador:
+- verifica e instala dependencias del sistema
+- crea el entorno virtual en `~/.local/share/whisper-dictation`
+- instala dependencias Python
+- copia los binarios a `~/.local/bin`
+- habilita e inicia el servicio `whisper-dictation`
+
+Guía completa de instalación y pruebas:
+- `docs/INSTALLATION-AND-TESTING.md`
 
 ## Uso
 | Acción | Resultado |
 |--------|-----------|
 | Mantener F12 | Inicia grabación |
 | Soltar F12 | Transcribe y escribe el texto |
+
+### Cómo probar que funciona
+1. Abre una aplicación donde puedas escribir.
+2. Mantén presionada `F12`.
+3. Habla durante unos segundos.
+4. Suelta `F12`.
+5. Verifica que el texto se escriba automáticamente en la ventana activa.
 
 ### Opciones avanzadas
 ```bash
@@ -43,6 +67,13 @@ systemctl --user status whisper-dictation
 systemctl --user restart whisper-dictation
 systemctl --user stop whisper-dictation
 journalctl --user -u whisper-dictation -f
+```
+
+### Validaciones rápidas
+```bash
+which dictate
+systemctl --user status whisper-dictation
+journalctl --user -u whisper-dictation -n 50 --no-pager
 ```
 
 ## Modelos disponibles
