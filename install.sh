@@ -1,61 +1,78 @@
 #!/usr/bin/env bash
 set -e
 
-# ── Colores ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
 info()    { echo -e "${GREEN}[✓]${NC} $1"; }
 warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
 error()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 
-# ── Verificar que no se ejecute como root ─────────────────────────────────────
 [ "$EUID" -eq 0 ] && error "No ejecutar como root. Ejecuta como tu usuario normal."
 
+APP_NAME="whisper-dictation"
+VENV_DIR="$HOME/.local/share/${APP_NAME}"
+LOCAL_BIN_DIR="$HOME/.local/bin"
+SYSTEMD_DIR="$HOME/.config/systemd/user"
+SERVICE_NAME="whisper-dictation.service"
+SERVICE_PATH="$SYSTEMD_DIR/$SERVICE_NAME"
+INSTALL_MODE="INSTALL"
+
+if [ -d "$VENV_DIR" ] || [ -f "$LOCAL_BIN_DIR/whisper-dictation.py" ] || [ -f "$SERVICE_PATH" ]; then
+    INSTALL_MODE="UPDATE"
+fi
+
 echo ""
-echo "  whisper-ptt — Instalador"
+echo "  whisper-ptt — ${INSTALL_MODE}"
 echo "  Push-to-talk dictation con Whisper offline"
 echo ""
 
-# ── Dependencias del sistema ──────────────────────────────────────────────────
 info "Verificando dependencias del sistema..."
-MISSING=()
-command -v python3 &>/dev/null || MISSING+=("python3")
-command -v xdotool &>/dev/null || MISSING+=("xdotool")
-dpkg -l libportaudio2 &>/dev/null 2>&1 || MISSING+=("libportaudio2")
+MISSING_PACKAGES=()
+command -v python3 &>/dev/null || MISSING_PACKAGES+=("python3")
+command -v xdotool &>/dev/null || MISSING_PACKAGES+=("xdotool")
+command -v xclip &>/dev/null || MISSING_PACKAGES+=("xclip")
+dpkg -s libportaudio2 &>/dev/null 2>&1 || MISSING_PACKAGES+=("libportaudio2")
+dpkg -s portaudio19-dev &>/dev/null 2>&1 || MISSING_PACKAGES+=("portaudio19-dev")
 
-if [ ${#MISSING[@]} -gt 0 ]; then
-    warn "Instalando dependencias faltantes: ${MISSING[*]}"
-    sudo apt-get install -y "${MISSING[@]}" portaudio19-dev
+if [ ${#MISSING_PACKAGES[@]} -gt 0 ]; then
+    warn "Instalando dependencias faltantes: ${MISSING_PACKAGES[*]}"
+    sudo apt-get update
+    sudo apt-get install -y "${MISSING_PACKAGES[@]}"
 fi
 
-# ── Entorno virtual Python ────────────────────────────────────────────────────
-VENV_DIR="$HOME/.local/share/whisper-dictation"
-info "Creando entorno virtual en $VENV_DIR..."
-python3 -m venv "$VENV_DIR"
+if systemctl --user is-active --quiet whisper-dictation; then
+    info "Deteniendo servicio actual antes de reemplazar archivos..."
+    systemctl --user stop whisper-dictation
+fi
+
+mkdir -p "$VENV_DIR"
+if [ ! -x "$VENV_DIR/bin/python3" ]; then
+    info "Creando entorno virtual en $VENV_DIR..."
+    python3 -m venv "$VENV_DIR"
+else
+    info "Reutilizando entorno virtual existente en $VENV_DIR..."
+fi
 
 info "Instalando librerías Python (puede tardar varios minutos)..."
 "$VENV_DIR/bin/pip" install --upgrade pip --quiet
 "$VENV_DIR/bin/pip" install faster-whisper sounddevice numpy pynput --quiet
 
-# ── Copiar archivos ───────────────────────────────────────────────────────────
 info "Instalando archivos..."
-mkdir -p "$HOME/.local/bin"
-cp whisper-dictation.py "$HOME/.local/bin/whisper-dictation.py"
-cp dictate "$HOME/.local/bin/dictate"
-cp frontend_gui.py "$HOME/.local/bin/whisper-ptt-gui"
-cp frontend_config.py "$HOME/.local/bin/frontend_config.py"
-cp frontend_service.py "$HOME/.local/bin/frontend_service.py"
-chmod +x "$HOME/.local/bin/dictate"
-chmod +x "$HOME/.local/bin/whisper-ptt-gui"
+mkdir -p "$LOCAL_BIN_DIR"
+cp whisper-dictation.py "$LOCAL_BIN_DIR/whisper-dictation.py"
+cp dictate "$LOCAL_BIN_DIR/dictate"
+cp frontend_gui.py "$LOCAL_BIN_DIR/whisper-ptt-gui"
+cp frontend_config.py "$LOCAL_BIN_DIR/frontend_config.py"
+cp frontend_service.py "$LOCAL_BIN_DIR/frontend_service.py"
+chmod +x "$LOCAL_BIN_DIR/dictate"
+chmod +x "$LOCAL_BIN_DIR/whisper-ptt-gui"
 
-# ── Servicio systemd ──────────────────────────────────────────────────────────
 info "Configurando servicio systemd..."
-mkdir -p "$HOME/.config/systemd/user"
-cp whisper-dictation.service "$HOME/.config/systemd/user/whisper-dictation.service"
+mkdir -p "$SYSTEMD_DIR"
+cp whisper-dictation.service "$SERVICE_PATH"
 systemctl --user daemon-reload
 systemctl --user enable whisper-dictation
-systemctl --user start whisper-dictation
+systemctl --user restart whisper-dictation
 
-# ── Verificar ~/.local/bin en PATH ───────────────────────────────────────────
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
     warn "~/.local/bin no está en tu PATH."
     warn "Agrega esta línea a tu ~/.bashrc o ~/.zshrc:"
@@ -63,7 +80,7 @@ if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
 fi
 
 echo ""
-info "¡Instalación completada!"
+info "¡${INSTALL_MODE} completado!"
 echo ""
 echo "  Mantén presionada F12 para dictar."
 echo "  Estado del servicio:"
