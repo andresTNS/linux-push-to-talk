@@ -39,9 +39,15 @@ The frontend is not intended to replace the CLI. It should sit on top of the exi
 
 ## Recommended technical direction
 
-### Recommended MVP stack
+### Required MVP stack
 
-**Python + Tkinter**
+**Python + Tkinter only**
+
+This proposal now follows the explicit direction requested by the repository owner in issue #6:
+- use Tkinter exclusively for the first functional iteration,
+- avoid heavier GUI dependencies,
+- preserve low resource usage on limited hardware,
+- keep packaging and runtime footprint simple.
 
 Why:
 - matches the current Python-based project,
@@ -110,6 +116,23 @@ Should show:
 - recent `systemd --user` logs,
 - a simple self-check result.
 
+## Threading and responsiveness model
+
+The GUI must remain responsive even while background dictation and service operations are happening.
+
+Required design:
+- Tkinter main thread owns all UI updates.
+- Keyboard capture and long-running operations must run outside the UI thread.
+- Communication back to the GUI should happen through thread-safe queues or scheduled UI polling via `after(...)`.
+- Service actions, diagnostics, and model-management tasks must never block the main window.
+
+Minimum worker separation for first functional iteration:
+- UI thread: windows, widgets, rendering, user actions
+- background worker: service status refresh, diagnostics, install/update actions
+- dictation/event worker: hotkey/event capture and runtime coordination when needed
+
+This separation is mandatory to avoid frozen windows and "not responding" states.
+
 ## Configuration model
 
 The frontend should introduce a single local config file owned by the user, for example:
@@ -167,9 +190,12 @@ The frontend should leverage that evolution rather than fork from it conceptuall
 ## Deliverable target
 
 A first implementation should produce:
-- a runnable local GUI,
+- a runnable local Tkinter GUI,
 - service start/stop/restart,
 - editable settings persisted to config,
+- automated hotkey configuration from the UI,
+- immediate visual microphone/status feedback,
 - model selection and download actions,
 - diagnostic panel,
-- logs view.
+- logs view,
+- installation and deployment guidance for Linux environments.

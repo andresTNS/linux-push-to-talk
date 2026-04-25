@@ -4,7 +4,15 @@ Issue: #6
 
 ## Goal
 
-Translate the frontend proposal into an incremental implementation path that remains compatible with the current CLI + systemd architecture.
+Translate the frontend proposal into an incremental implementation path that remains compatible with the current CLI + systemd architecture and aligns with the owner guidance in issue #6.
+
+Owner constraints now incorporated into this plan:
+- Tkinter only for the first functional iteration,
+- robust behavior on low-resource Linux hardware,
+- strict separation between GUI and keyboard/event logic,
+- installation and deployment guide as part of the deliverable,
+- atomic commits with Conventional Commits during implementation,
+- every implementation commit linked back to issue #6.
 
 ## Phase 0 — Preparation
 
@@ -25,13 +33,16 @@ Build a minimal Python Tkinter app with:
 - top status banner,
 - tabs or left navigation,
 - service controls,
-- current config readout.
+- current config readout,
+- clear microphone state indicator,
+- non-blocking background refresh for service state.
 
 ### Acceptance
 - GUI opens,
 - reads config,
 - checks service state,
-- start/stop/restart buttons work.
+- start/stop/restart buttons work,
+- UI remains responsive while status checks run.
 
 ## Phase 2 — Configuration editor
 
@@ -87,7 +98,15 @@ Recommended frontend module split:
 - `frontend/config.py` — config read/write
 - `frontend/models.py` — model registry / downloads
 - `frontend/diagnostics.py` — checks / report generation
+- `frontend/hotkey.py` — keyboard/event orchestration outside the UI thread
+- `frontend/runtime_queue.py` — thread-safe message passing to Tkinter
 - `frontend/views/*.py` — UI panels
+
+Threading rules:
+- all Tkinter widget updates happen only on the main thread,
+- blocking work runs in workers,
+- workers communicate results to the UI through a queue,
+- the UI consumes events through periodic `after(...)` polling.
 
 ## Risks
 
@@ -109,22 +128,28 @@ Recommended frontend module split:
 
 ## Recommended first implementation milestone
 
-Implement only this first:
+Implement this first functional milestone:
 - status screen,
 - configuration screen,
 - service controls,
 - saved config,
-- model dropdown.
+- model dropdown,
+- hotkey configuration from UI,
+- microphone/status feedback,
+- installation/testing guide aligned with Linux deployment.
 
-That gives real user value without overbuilding.
+That gives real user value without overbuilding while still honoring the owner's request for a usable first iteration.
 
-## Relationship with open-source maintenance
+## Commit discipline for implementation
 
-This issue should be treated as a proposal/specification milestone, not as a promise to implement the full GUI immediately.
+When implementation starts, use this delivery discipline:
+- one file changed per commit,
+- Conventional Commits naming,
+- each commit body references issue `#6`,
+- keep GUI and runtime changes traceable by layer.
 
-A good outcome for this issue is:
-- clear proposal,
-- clear screens,
-- clear architecture,
-- clear incremental roadmap,
-- clear boundary between GUI and backend.
+Suggested examples:
+- `feat(frontend): add tkinter app shell`
+- `feat(frontend): add config loader`
+- `feat(frontend): add service status panel`
+- `docs(frontend): add linux deployment notes`
