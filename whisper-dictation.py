@@ -4,57 +4,140 @@ Push-to-talk dictation para Linux X11 + KDE.
 Mantén presionada F12 para grabar. Al soltar, transcribe y escribe.
 
 Uso:
-  python3 whisper-dictation.py            # Tecla por defecto: F12
-  python3 whisper-dictation.py --key F10  # Cambiar tecla
-  python3 whisper-dictation.py --toggle   # Modo toggle
-  python3 whisper-dictation.py --model medium  # Modelo más preciso
+  python3 whisper-dictation.py                   # Modelo automático según RAM
+  python3 whisper-dictation.py --key F10         # Cambiar tecla
+  python3 whisper-dictation.py --toggle          # Modo toggle
+  python3 whisper-dictation.py --model medium    # Modelo específico
+  python3 whisper-dictation.py --download-all    # Predescargar todos los modelos
 """
 
 import argparse
+import os
 import subprocess
 import threading
 import time
+
 import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
 from pynput import keyboard
 
 # ---------- Configuración por defecto ----------
-DEFAULT_KEY      = "f12"
-DEFAULT_MODEL    = "base"   # tiny | base | small | medium | large-v3
-DEFAULT_LANGUAGE = "es"     # None = autodetección
-SAMPLE_RATE      = 16000
-CHANNELS         = 1
+DEFAULT_KEY = "f12"
+DEFAULT_MODEL = "auto"
+DEFAULT_LANGUAGE = "auto"
+SAMPLE_RATE = 16000
+CHANNELS = 1
+
+INITIAL_PROMPT = (
+    "Transcripción en español con términos técnicos en inglés: "
+    "GitHub, issue, pull request, commit, branch, merge, API, Python, Linux, "
+    "deploy, bug, feature, terminal, script, model, token, pipeline, Docker, "
+    "JavaScript, TypeScript, React, Node, database, endpoint, repository."
+)
+
+_xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
+CACHE_DIR = os.path.join(_xdg_cache, "huggingface", "hub")
 # -----------------------------------------------
 
+# ---------- Registro de modelos ----------------
+MODEL_REGISTRY = {
+    "tiny": {"ram_mb": 200, "quality": 1, "multilingual": True, "cpu_viable": True},
+    "tiny.en": {"ram_mb": 200, "quality": 1, "multilingual": False, "cpu_viable": True},
+    "base": {"ram_mb": 300, "quality": 2, "multilingual": True, "cpu_viable": True},
+    "base.en": {"ram_mb": 300, "quality": 2, "multilingual": False, "cpu_viable": True},
+    "small": {"ram_mb": 500, "quality": 3, "multilingual": True, "cpu_viable": True},
+    "small.en": {"ram_mb": 500, "quality": 3, "multilingual": False, "cpu_viable": True},
+    "medium": {"ram_mb": 1500, "quality": 4, "multilingual": True, "cpu_viable": True},
+    "medium.en": {"ram_mb": 1500, "quality": 4, "multilingual": False, "cpu_viable": True},
+    "large-v1": {"ram_mb": 3000, "quality": 5, "multilingual": True, "cpu_viable": False},
+    "large-v2": {"ram_mb": 3000, "quality": 6, "multilingual": True, "cpu_viable": False},
+    "large-v3": {"ram_mb": 3000, "quality": 7, "multilingual": True, "cpu_viable": False},
+    "distil-large-v3": {"ram_mb": 1500, "quality": 6, "multilingual": True, "cpu_viable": True},
+    "distil-medium.en": {"ram_mb": 800, "quality": 4, "multilingual": False, "cpu_viable": True},
+    "distil-small.en": {"ram_mb": 400, "quality": 3, "multilingual": False, "cpu_viable": True},
+}
+# -----------------------------------------------
+
+
 def notify(title, message, timeout=3):
-    """Notificación visual en KDE (no bloqueante)."""
     try:
         subprocess.Popen(
-            ["kdialog", "--passivepopup", f"{message}", str(timeout),
-             "--title", title],
+            ["kdialog", "--passivepopup", f"{message}", str(timeout), "--title", title],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
     except FileNotFoundError:
-        pass  # Si kdialog no está disponible, continúa sin notificación
+        pass
+
+
+def get_available_ram_mb():
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable"):
+                    return int(line.split()[1]) // 1024
+    except Exception:
+        pass
+    return 1000
+
+
+def auto_select_model():
+    available = get_available_ram_mb()
+    usable = available * 0.75
+    candidates = {
+        k: v for k, v in MODEL_REGISTRY.items()
+        if v["ram_mb"] <= usable and v["multilingual"] and v["cpu_viable"]
+    }
+    if not candidates:
+        print("[Auto] RAM insuficiente para cualquier modelo, usando tiny.")
+        return "tiny"
+    best = max(candidates, key=lambda k: MODEL_REGISTRY[k]["quality"])
+    print(f"[Auto] RAM disponible: {available} MB → modelo seleccionado: '{best}'")
+    return best
+
+
+def is_model_cached(model_name):
+    model_dir = os.path.join(CACHE_DIR, f"models--Systran--faster-whisper-{model_name}")
+    return os.path.isdir(model_dir)
+
+
+def ensure_model_available(model_name):
+    if not is_model_cached(model_name):
+        print(f"[Whisper Dictation] Descargando modelo '{model_name}' (primera vez, puede tardar)...")
+        notify("Whisper Dictation", f"⬇️ Descargando modelo '{model_name}'...", 60)
+    else:
+        print(f"[Whisper Dictation] Cargando modelo '{model_name}'...")
+        notify("Whisper Dictation", "⏳ Cargando modelo, espera un momento...", 5)
+    return WhisperModel(model_name, device="cpu", compute_type="int8")
+
+
+def download_all_models():
+    print("[⬇] Iniciando descarga de todos los modelos...")
+    notify("Whisper Dictation", "⬇️ Descargando todos los modelos...", 10)
+    for model_name in MODEL_REGISTRY:
+        if is_model_cached(model_name):
+            print(f"[✓] {model_name} — ya en caché, omitido.")
+            continue
+        print(f"[⬇] Descargando '{model_name}'...")
+        notify("Whisper Dictation", f"⬇️ Descargando {model_name}...", 30)
+        WhisperModel(model_name, device="cpu", compute_type="int8")
+        print(f"[✓] '{model_name}' descargado.")
+    print("[✓] Todos los modelos están disponibles.")
+    notify("Whisper Dictation", "✅ Todos los modelos descargados.", 5)
 
 
 class Dictation:
     def __init__(self, model_name, language, toggle_mode):
-        print(f"[Whisper Dictation] Cargando modelo '{model_name}'...")
-        notify("Whisper Dictation", "⏳ Cargando modelo, espera un momento...", 5)
-        self.model = WhisperModel(
-            model_name,
-            device="cpu",
-            compute_type="int8",
-        )
+        self.model = ensure_model_available(model_name)
+        self.model_name = model_name
         self.language = language
         self.toggle_mode = toggle_mode
         self.recording = False
         self.audio_frames = []
         self.lock = threading.Lock()
-        print(f"[Whisper Dictation] Listo. Idioma: {language or 'auto'}")
+        lang_display = language if language else "auto (multilingüe)"
+        print(f"[Whisper Dictation] Listo. Modelo: {model_name} | Idioma: {lang_display}")
         notify("Whisper Dictation", "✅ Listo — mantén F12 para dictar", 4)
 
     def start_recording(self):
@@ -64,7 +147,7 @@ class Dictation:
             self.recording = True
             self.audio_frames = []
         print("[●] Grabando...", flush=True)
-        notify("🎙 Dictado", "Grabando... suelta F12 para transcribir", 30)
+        notify("🎙 Dictado", "Grabando... suelta la tecla para transcribir", 30)
         self._stream = sd.InputStream(
             samplerate=SAMPLE_RATE,
             channels=CHANNELS,
@@ -94,22 +177,26 @@ class Dictation:
             return
 
         audio = np.concatenate(self.audio_frames, axis=0).flatten()
-
         if len(audio) < SAMPLE_RATE * 0.5:
             print("[!] Grabación muy corta, ignorada.")
             notify("🎙 Dictado", "⚠️ Grabación muy corta, ignorada", 3)
             return
 
-        segments, info = self.model.transcribe(
+        model_quality = MODEL_REGISTRY.get(self.model_name, {}).get("quality", 4)
+        prompt = INITIAL_PROMPT if model_quality <= 3 else None
+
+        segments, _ = self.model.transcribe(
             audio,
             language=self.language,
             beam_size=5,
             vad_filter=True,
             vad_parameters=dict(min_silence_duration_ms=500),
+            initial_prompt=prompt,
+            temperature=0.0,
+            condition_on_previous_text=False,
         )
 
         text = " ".join(seg.text for seg in segments).strip()
-
         if text:
             print(f'[✓] "{text}"', flush=True)
             notify("✅ Transcripción", text, 5)
@@ -119,17 +206,51 @@ class Dictation:
             notify("🎙 Dictado", "⚠️ No se detectó habla", 3)
 
     def _type_text(self, text):
-        # Pausa para que F12 se suelte antes de escribir
         time.sleep(0.15)
+        if self._try_xclip(text):
+            return
+        if self._try_xsel(text):
+            return
+        self._fallback_xdotool(text)
+
+    def _try_xclip(self, text):
         try:
-            subprocess.run(
-                ["xdotool", "type", "--clearmodifiers", "--delay", "0", "--", text],
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"[Error xdotool] {e}")
+            prev = subprocess.run(["xclip", "-selection", "clipboard", "-o"], capture_output=True)
+            subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode("utf-8"), check=True)
+            try:
+                subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+shift+v"], check=True)
+            except subprocess.CalledProcessError:
+                subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True)
+            time.sleep(0.1)
+            if prev.returncode == 0:
+                subprocess.run(["xclip", "-selection", "clipboard"], input=prev.stdout, check=False)
+            return True
         except FileNotFoundError:
-            print("[Error] xdotool no encontrado. Instalar con: sudo apt install xdotool")
+            return False
+        except subprocess.CalledProcessError:
+            return False
+
+    def _try_xsel(self, text):
+        try:
+            prev = subprocess.run(["xsel", "--clipboard", "--output"], capture_output=True)
+            subprocess.run(["xsel", "--clipboard", "--input"], input=text.encode("utf-8"), check=True)
+            subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True)
+            time.sleep(0.1)
+            if prev.returncode == 0:
+                subprocess.run(["xsel", "--clipboard", "--input"], input=prev.stdout, check=False)
+            return True
+        except FileNotFoundError:
+            return False
+        except subprocess.CalledProcessError:
+            return False
+
+    def _fallback_xdotool(self, text):
+        print("[!] xclip y xsel no disponibles. Usando xdotool type (puede perder tildes).")
+        notify("⚠️ Dictado", "xclip/xsel no instalados — tildes pueden perderse", 5)
+        try:
+            subprocess.run(["xdotool", "type", "--clearmodifiers", "--delay", "0", "--", text], check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            print(f"[Error] No se pudo escribir el texto: {e}")
 
 
 def main():
@@ -137,16 +258,23 @@ def main():
     parser.add_argument("--key", default=DEFAULT_KEY,
                         help=f"Tecla para activar (default: {DEFAULT_KEY})")
     parser.add_argument("--model", default=DEFAULT_MODEL,
-                        choices=["tiny", "base", "small", "medium", "large-v3"],
-                        help=f"Modelo Whisper (default: {DEFAULT_MODEL})")
+                        choices=["auto"] + list(MODEL_REGISTRY.keys()),
+                        help="Modelo Whisper a usar. 'auto' selecciona el mejor según RAM disponible.")
     parser.add_argument("--language", default=DEFAULT_LANGUAGE,
-                        help="Código de idioma ISO (es, en, fr...) o 'auto'")
+                        help="Código ISO del idioma (es, en, fr...) o 'auto' para detección multilingüe.")
     parser.add_argument("--toggle", action="store_true",
-                        help="Modo toggle: presionar una vez inicia, presionar de nuevo detiene")
+                        help="Modo toggle: presionar una vez inicia, presionar de nuevo detiene.")
+    parser.add_argument("--download-all", action="store_true",
+                        help="Descarga todos los modelos del registro y sale.")
     args = parser.parse_args()
 
+    if args.download_all:
+        download_all_models()
+        return
+
+    model_name = auto_select_model() if args.model == "auto" else args.model
     language = None if args.language == "auto" else args.language
-    dictation = Dictation(args.model, language, args.toggle)
+    dictation = Dictation(model_name, language, args.toggle)
 
     mode = "toggle" if args.toggle else "mantener presionada"
     print(f"[Whisper Dictation] Tecla activa: {args.key.upper()} ({mode})")
@@ -160,7 +288,6 @@ def main():
             key_name = key.name if hasattr(key, "name") else key.char
         except AttributeError:
             return
-
         if key_name == args.key.lower():
             if args.toggle:
                 if not pressed:
@@ -182,11 +309,9 @@ def main():
             key_name = key.name if hasattr(key, "name") else key.char
         except AttributeError:
             return
-
-        if key_name == args.key.lower():
-            if pressed:
-                pressed = False
-                threading.Thread(target=dictation.stop_and_transcribe, daemon=True).start()
+        if key_name == args.key.lower() and pressed:
+            pressed = False
+            threading.Thread(target=dictation.stop_and_transcribe, daemon=True).start()
 
     with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
         try:
@@ -194,6 +319,7 @@ def main():
         except KeyboardInterrupt:
             print("\n[Whisper Dictation] Saliendo.")
             notify("Whisper Dictation", "🔴 Servicio detenido", 3)
+
 
 if __name__ == "__main__":
     main()
