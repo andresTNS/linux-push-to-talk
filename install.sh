@@ -79,6 +79,7 @@ cp dictate "$LOCAL_BIN_DIR/dictate"
 cp frontend_gui.py "$LOCAL_BIN_DIR/whisper-ptt-gui"
 cp frontend_config.py "$LOCAL_BIN_DIR/frontend_config.py"
 cp frontend_service.py "$LOCAL_BIN_DIR/frontend_service.py"
+cp frontend_runtime.py "$LOCAL_BIN_DIR/frontend_runtime.py"
 chmod +x "$LOCAL_BIN_DIR/dictate"
 chmod +x "$LOCAL_BIN_DIR/whisper-ptt-gui"
 
