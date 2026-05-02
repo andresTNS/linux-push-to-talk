@@ -100,11 +100,16 @@ La primera iteración funcional de GUI ya incluye:
 - configuración visual de tecla, idioma, modelo y modo toggle
 - recarga de logs del servicio
 - operaciones de iniciar, detener y reiniciar servicio
+- sincronización entre la configuración GUI y el `ExecStart` real del servicio systemd
+- protección básica para evitar múltiples instancias simultáneas del frontend
+- creación automática de entrada de autostart al iniciar sesión
 
 Para abrir la GUI instalada:
 ```bash
 whisper-ptt-gui
 ```
+
+La GUI escribe configuración en `~/.config/whisper-dictation/config.json`, sincroniza el `ExecStart` del servicio `whisper-dictation.service` y crea autostart en `~/.config/autostart/whisper-ptt-gui.desktop`.
 
 Documentación de frontend:
 - `docs/frontend/FRONTEND-PROPOSAL.md`
