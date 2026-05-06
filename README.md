@@ -72,9 +72,22 @@ systemctl --user stop whisper-dictation
 journalctl --user -u whisper-dictation -f
 ```
 
+### Diagnóstico rápido
+```bash
+dictate --status
+dictate --status --json
+```
+
+`dictate --status` consolida en una sola salida el estado del servicio systemd,
+la sesión gráfica, modelo configurado/cacheado, idioma, tecla, modo, backend de
+audio, backend de escritura, uso de caché y el último error del journal de las
+últimas 24 horas. Usa `--json` para integrar el diagnóstico con herramientas o
+la GUI.
+
 ### Validaciones rápidas
 ```bash
 which dictate
+dictate --status
 systemctl --user status whisper-dictation
 journalctl --user -u whisper-dictation -n 50 --no-pager
 ```
