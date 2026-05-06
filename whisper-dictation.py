@@ -259,6 +259,8 @@ def _get_last_journal_error():
     )
     if result is None:
         return {"available": False, "message": "journalctl not found"}
+    if result.returncode == 124:
+        return {"available": False, "message": None}
     output = (result.stdout or result.stderr or "").strip()
     if not output or "-- No entries --" in output:
         return {"available": True, "message": None}
@@ -270,7 +272,7 @@ def _get_last_activity():
         ["journalctl", "--user", "-u", SERVICE_NAME, "-n", "1", "--no-pager", "--output", "short-iso"],
         timeout=0.8,
     )
-    if result is None:
+    if result is None or result.returncode == 124:
         return None
     output = (result.stdout or "").strip()
     if not output or "-- No entries --" in output:
@@ -512,6 +514,7 @@ def main():
     model_name = auto_select_model() if args.model == "auto" else args.model
     language = None if args.language == "auto" else args.language
 
+    global sd, keyboard
     import sounddevice as sd
     from pynput import keyboard
 
