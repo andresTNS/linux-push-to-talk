@@ -1,12 +1,13 @@
 # whisper-ptt
 
-Push-to-talk dictation para Linux usando OpenAI Whisper offline.
-Mantén presionada una tecla para grabar tu voz y el texto se escribe
-automáticamente donde tengas el cursor. Sin internet, sin APIs, funciona
-en cualquier aplicación.
+Push-to-talk dictation para Linux usando OpenAI Whisper offline por defecto,
+con opción configurable para usar una API STT alternativa. Mantén presionada
+una tecla para grabar tu voz y el texto se escribe automáticamente donde
+tengas el cursor. En modo local funciona sin internet ni APIs; en modo API
+requiere configurar credenciales explícitas.
 
 ## Características
-- 100% offline — tu voz nunca sale de tu máquina
+- Offline por defecto — tu voz no sale de tu máquina salvo que actives un proveedor API
 - Funciona en cualquier aplicación (navegador, editor, terminal, etc.)
 - Notificaciones visuales en KDE
 - Arranque automático al iniciar sesión (systemd)
@@ -119,6 +120,9 @@ MIT
 
 ## STT alternativo: Groq API
 Además del modo local offline, puedes usar Groq como backend de transcripción.
+Groq se integra mediante su endpoint compatible con OpenAI Whisper y permite
+probar modelos hosted sin cambiar el flujo push-to-talk. Mantén `local` como
+proveedor si necesitas máxima privacidad/offline.
 
 Variables de entorno:
 - `GROQ_API_KEY` (requerida cuando `--stt-provider groq`)
