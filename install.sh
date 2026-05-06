@@ -8,6 +8,104 @@ warn()    { echo -e "${YELLOW}[!]${NC} $1"; }
 error()   { echo -e "${RED}[✗]${NC} $1"; exit 1; }
 step()    { echo -e "${CYAN}[→]${NC} $1"; }
 
+# ── Preflight: detectar distro y validar dependencias sin modificar el sistema ─
+preflight_check() {
+    step "Ejecutando preflight de dependencias del sistema..."
+
+    if [ ! -r /etc/os-release ]; then
+        error "No se pudo detectar la distribución: falta /etc/os-release. Instala manualmente python>=3.9, pip, xdotool, headers de PortAudio y PulseAudio/PipeWire."
+    fi
+
+    # shellcheck disable=SC1091
+    . /etc/os-release
+
+    local distro="unsupported"
+    case "${ID:-}" in
+        ubuntu|debian) distro="debian" ;;
+        fedora) distro="fedora" ;;
+        arch|endeavouros|manjaro) distro="arch" ;;
+        *)
+            case " ${ID_LIKE:-} " in
+                *" debian "*) distro="debian" ;;
+                *" fedora "*) distro="fedora" ;;
+                *" arch "*) distro="arch" ;;
+            esac
+            ;;
+    esac
+
+    if [ "$distro" = "unsupported" ]; then
+        error "Distribución no soportada (${PRETTY_NAME:-desconocida}). Soportadas: Debian/Ubuntu, Fedora y Arch."
+    fi
+
+    local missing=()
+    local packages=()
+
+    if ! command -v python3 >/dev/null 2>&1 || ! python3 - <<'PYVER' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 9) else 1)
+PYVER
+    then
+        missing+=("python>=3.9")
+        case "$distro" in
+            debian) packages+=("python3") ;;
+            fedora) packages+=("python3") ;;
+            arch) packages+=("python") ;;
+        esac
+    fi
+
+    if ! python3 -m pip --version >/dev/null 2>&1 && ! command -v pip3 >/dev/null 2>&1; then
+        missing+=("pip")
+        case "$distro" in
+            debian) packages+=("python3-pip") ;;
+            fedora) packages+=("python3-pip") ;;
+            arch) packages+=("python-pip") ;;
+        esac
+    fi
+
+    if ! command -v xdotool >/dev/null 2>&1; then
+        missing+=("xdotool")
+        packages+=("xdotool")
+    fi
+
+    if ! command -v pkg-config >/dev/null 2>&1 || ! pkg-config --exists portaudio-2.0 2>/dev/null; then
+        missing+=("headers de PortAudio")
+        case "$distro" in
+            debian) packages+=("portaudio19-dev") ;;
+            fedora) packages+=("portaudio-devel") ;;
+            arch) packages+=("portaudio") ;;
+        esac
+    fi
+
+    if ! command -v pactl >/dev/null 2>&1 && ! command -v pipewire >/dev/null 2>&1; then
+        missing+=("pulseaudio/pipewire")
+        case "$distro" in
+            debian) packages+=("pulseaudio-utils" "pipewire") ;;
+            fedora) packages+=("pulseaudio-utils" "pipewire") ;;
+            arch) packages+=("libpulse" "pipewire") ;;
+        esac
+    fi
+
+    if [ ${#missing[@]} -gt 0 ]; then
+        warn "Faltan dependencias obligatorias: ${missing[*]}"
+        case "$distro" in
+            debian)
+                echo "Instala con: sudo apt-get update && sudo apt-get install -y ${packages[*]}"
+                ;;
+            fedora)
+                echo "Instala con: sudo dnf install -y ${packages[*]}"
+                ;;
+            arch)
+                echo "Instala con: sudo pacman -S --needed ${packages[*]}"
+                ;;
+        esac
+        error "Preflight falló. No se realizaron cambios."
+    fi
+
+    info "Preflight OK para ${PRETTY_NAME:-$ID}: dependencias obligatorias presentes."
+}
+
+preflight_check
+
 # ── Verificar que no se ejecute como root ────────────────────────────────────
 [ "$EUID" -eq 0 ] && error "No ejecutar como root. Ejecuta como tu usuario normal."
 
@@ -35,23 +133,6 @@ else
     echo -e "  ${GREEN}Modo: INSTALACIÓN NUEVA${NC}"
 fi
 echo ""
-
-# ── Dependencias del sistema ──────────────────────────────────────────────────
-step "Verificando dependencias del sistema..."
-MISSING_PACKAGES=()
-command -v python3 &>/dev/null || MISSING_PACKAGES+=("python3")
-command -v xdotool &>/dev/null || MISSING_PACKAGES+=("xdotool")
-command -v xclip &>/dev/null || MISSING_PACKAGES+=("xclip")
-dpkg -s libportaudio2 &>/dev/null 2>&1 || MISSING_PACKAGES+=("libportaudio2")
-dpkg -s portaudio19-dev &>/dev/null 2>&1 || MISSING_PACKAGES+=("portaudio19-dev")
-
-if [ ${#MISSING_PACKAGES[@]} -gt 0 ]; then
-    warn "Instalando dependencias faltantes: ${MISSING_PACKAGES[*]}"
-    sudo apt-get update
-    sudo apt-get install -y "${MISSING_PACKAGES[@]}"
-else
-    info "Todas las dependencias del sistema están presentes."
-fi
 
 if systemctl --user is-active --quiet "$SERVICE_NAME"; then
     step "Deteniendo servicio actual antes de reemplazar archivos..."
