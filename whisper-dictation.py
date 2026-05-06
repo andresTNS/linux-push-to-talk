@@ -4,28 +4,42 @@ Push-to-talk dictation para Linux X11 + KDE.
 Mantén presionada F12 para grabar. Al soltar, transcribe y escribe.
 
 Uso:
-  python3 whisper-dictation.py                   # Modelo automático según RAM
-  python3 whisper-dictation.py --key F10         # Cambiar tecla
-  python3 whisper-dictation.py --toggle          # Modo toggle
-  python3 whisper-dictation.py --model medium    # Modelo específico
-  python3 whisper-dictation.py --download-all    # Predescargar todos los modelos
+  python3 whisper-dictation.py                         # Modelo automático según RAM
+  python3 whisper-dictation.py --key F10               # Cambiar tecla
+  python3 whisper-dictation.py --toggle                # Modo toggle
+  python3 whisper-dictation.py --model medium          # Modelo específico
+  python3 whisper-dictation.py --stt-provider groq     # Usar API Groq Whisper
+  python3 whisper-dictation.py --download-all          # Predescargar modelos local
 """
 
 import argparse
+import io
+import json
 import os
 import subprocess
 import threading
 import time
+import urllib.request
+import uuid
+import wave
 
 import numpy as np
-import sounddevice as sd
-from faster_whisper import WhisperModel
-from pynput import keyboard
+
+try:
+    import sounddevice as sd
+except ImportError:  # pragma: no cover
+    sd = None
+
+try:
+    from pynput import keyboard
+except ImportError:  # pragma: no cover
+    keyboard = None
 
 # ---------- Configuración por defecto ----------
 DEFAULT_KEY = "f12"
 DEFAULT_MODEL = "auto"
 DEFAULT_LANGUAGE = "auto"
+DEFAULT_STT_PROVIDER = os.environ.get("WHISPER_DICTATION_STT_PROVIDER", "local").lower()
 SAMPLE_RATE = 16000
 CHANNELS = 1
 
@@ -38,6 +52,11 @@ INITIAL_PROMPT = (
 
 _xdg_cache = os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache"))
 CACHE_DIR = os.path.join(_xdg_cache, "huggingface", "hub")
+GROQ_TRANSCRIPTIONS_URL = os.environ.get(
+    "WHISPER_DICTATION_GROQ_URL",
+    "https://api.groq.com/openai/v1/audio/transcriptions",
+)
+GROQ_MODEL = os.environ.get("WHISPER_DICTATION_GROQ_MODEL", "whisper-large-v3-turbo")
 # -----------------------------------------------
 
 # ---------- Registro de modelos ----------------
@@ -103,6 +122,8 @@ def is_model_cached(model_name):
 
 
 def ensure_model_available(model_name):
+    from faster_whisper import WhisperModel
+
     if not is_model_cached(model_name):
         print(f"[Whisper Dictation] Descargando modelo '{model_name}' (primera vez, puede tardar)...")
         notify("Whisper Dictation", f"⬇️ Descargando modelo '{model_name}'...", 60)
@@ -113,6 +134,8 @@ def ensure_model_available(model_name):
 
 
 def download_all_models():
+    from faster_whisper import WhisperModel
+
     print("[⬇] Iniciando descarga de todos los modelos...")
     notify("Whisper Dictation", "⬇️ Descargando todos los modelos...", 10)
     for model_name in MODEL_REGISTRY:
@@ -127,9 +150,86 @@ def download_all_models():
     notify("Whisper Dictation", "✅ Todos los modelos descargados.", 5)
 
 
+def _audio_to_wav_bytes(audio, sample_rate):
+    pcm = np.clip(audio, -1.0, 1.0)
+    pcm = (pcm * 32767).astype(np.int16)
+    with io.BytesIO() as bio:
+        with wave.open(bio, "wb") as wavf:
+            wavf.setnchannels(CHANNELS)
+            wavf.setsampwidth(2)
+            wavf.setframerate(sample_rate)
+            wavf.writeframes(pcm.tobytes())
+        return bio.getvalue()
+
+
+def _multipart_body(fields, files):
+    boundary = f"----WhisperDictation{uuid.uuid4().hex}"
+    chunks = []
+    for key, value in fields.items():
+        chunks.extend([
+            f"--{boundary}\r\n".encode(),
+            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode(),
+            str(value).encode(),
+            b"\r\n",
+        ])
+    for key, (filename, content, content_type) in files.items():
+        chunks.extend([
+            f"--{boundary}\r\n".encode(),
+            (
+                f'Content-Disposition: form-data; name="{key}"; filename="{filename}"\r\n'
+                f"Content-Type: {content_type}\r\n\r\n"
+            ).encode(),
+            content,
+            b"\r\n",
+        ])
+    chunks.append(f"--{boundary}--\r\n".encode())
+    return boundary, b"".join(chunks)
+
+
+def transcribe_with_groq(audio, sample_rate, language):
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY no está configurada para usar --stt-provider groq")
+
+    wav_bytes = _audio_to_wav_bytes(audio, sample_rate)
+    fields = {
+        "model": GROQ_MODEL,
+        "temperature": "0",
+        "response_format": "json",
+        "prompt": INITIAL_PROMPT,
+    }
+    if language:
+        fields["language"] = language
+
+    boundary, body = _multipart_body(
+        fields=fields,
+        files={"file": ("recording.wav", wav_bytes, "audio/wav")},
+    )
+
+    request = urllib.request.Request(
+        GROQ_TRANSCRIPTIONS_URL,
+        data=body,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=40) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError(f"Fallo transcripción con Groq API: {exc}") from exc
+
+    return payload.get("text", "").strip()
+
+
 class Dictation:
-    def __init__(self, model_name, language, toggle_mode):
-        self.model = ensure_model_available(model_name)
+    def __init__(self, model_name, language, toggle_mode, stt_provider):
+        self.stt_provider = stt_provider
+        self.model = ensure_model_available(model_name) if stt_provider == "local" else None
         self.model_name = model_name
         self.language = language
         self.toggle_mode = toggle_mode
@@ -137,7 +237,8 @@ class Dictation:
         self.audio_frames = []
         self.lock = threading.Lock()
         lang_display = language if language else "auto (multilingüe)"
-        print(f"[Whisper Dictation] Listo. Modelo: {model_name} | Idioma: {lang_display}")
+        provider_desc = f"groq ({GROQ_MODEL})" if stt_provider == "groq" else model_name
+        print(f"[Whisper Dictation] Listo. STT: {provider_desc} | Idioma: {lang_display}")
         notify("Whisper Dictation", "✅ Listo — mantén F12 para dictar", 4)
 
     def start_recording(self):
@@ -182,9 +283,21 @@ class Dictation:
             notify("🎙 Dictado", "⚠️ Grabación muy corta, ignorada", 3)
             return
 
+        text = self._transcribe_audio(audio)
+        if text:
+            print(f'[✓] "{text}"', flush=True)
+            notify("✅ Transcripción", text, 5)
+            self._type_text(text)
+        else:
+            print("[!] No se detectó habla.")
+            notify("🎙 Dictado", "⚠️ No se detectó habla", 3)
+
+    def _transcribe_audio(self, audio):
+        if self.stt_provider == "groq":
+            return transcribe_with_groq(audio, SAMPLE_RATE, self.language)
+
         model_quality = MODEL_REGISTRY.get(self.model_name, {}).get("quality", 4)
         prompt = INITIAL_PROMPT if model_quality <= 3 else None
-
         segments, _ = self.model.transcribe(
             audio,
             language=self.language,
@@ -195,15 +308,7 @@ class Dictation:
             temperature=0.0,
             condition_on_previous_text=False,
         )
-
-        text = " ".join(seg.text for seg in segments).strip()
-        if text:
-            print(f'[✓] "{text}"', flush=True)
-            notify("✅ Transcripción", text, 5)
-            self._type_text(text)
-        else:
-            print("[!] No se detectó habla.")
-            notify("🎙 Dictado", "⚠️ No se detectó habla", 3)
+        return " ".join(seg.text for seg in segments).strip()
 
     def _type_text(self, text):
         time.sleep(0.15)
@@ -254,6 +359,11 @@ class Dictation:
 
 
 def main():
+    if sd is None or keyboard is None:
+        raise RuntimeError(
+            "Faltan dependencias runtime: instala 'sounddevice' y 'pynput' en el entorno activo."
+        )
+
     parser = argparse.ArgumentParser(description="Push-to-talk dictation con Whisper")
     parser.add_argument("--key", default=DEFAULT_KEY,
                         help=f"Tecla para activar (default: {DEFAULT_KEY})")
@@ -266,6 +376,16 @@ def main():
                         help="Modo toggle: presionar una vez inicia, presionar de nuevo detiene.")
     parser.add_argument("--download-all", action="store_true",
                         help="Descarga todos los modelos del registro y sale.")
+    parser.add_argument(
+        "--stt-provider",
+        default=DEFAULT_STT_PROVIDER,
+        choices=["local", "groq"],
+        help=(
+            "Proveedor de STT. 'local' usa faster-whisper offline; "
+            "'groq' usa la API compatible OpenAI de Groq. "
+            "También configurable con WHISPER_DICTATION_STT_PROVIDER."
+        ),
+    )
     args = parser.parse_args()
 
     if args.download_all:
@@ -274,7 +394,7 @@ def main():
 
     model_name = auto_select_model() if args.model == "auto" else args.model
     language = None if args.language == "auto" else args.language
-    dictation = Dictation(model_name, language, args.toggle)
+    dictation = Dictation(model_name, language, args.toggle, args.stt_provider)
 
     mode = "toggle" if args.toggle else "mantener presionada"
     print(f"[Whisper Dictation] Tecla activa: {args.key.upper()} ({mode})")

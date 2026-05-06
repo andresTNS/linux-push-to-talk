@@ -62,6 +62,7 @@ dictate --model distil-large-v3  # Variante distil-whisper
 dictate --language auto          # Detectar idioma automáticamente
 dictate --toggle                 # Modo toggle en vez de mantener presionado
 dictate --download-all           # Pre-descarga todos los modelos registrados
+dictate --stt-provider groq       # Usa Groq Whisper API (requiere GROQ_API_KEY)
 ```
 
 ### Controlar el servicio
@@ -114,3 +115,19 @@ Documentación de frontend:
 
 ## Licencia
 MIT
+
+
+## STT alternativo: Groq API
+Además del modo local offline, puedes usar Groq como backend de transcripción.
+
+Variables de entorno:
+- `GROQ_API_KEY` (requerida cuando `--stt-provider groq`)
+- `WHISPER_DICTATION_STT_PROVIDER` (`local` o `groq`, default `local`)
+- `WHISPER_DICTATION_GROQ_MODEL` (default `whisper-large-v3-turbo`)
+- `WHISPER_DICTATION_GROQ_URL` (default `https://api.groq.com/openai/v1/audio/transcriptions`)
+
+Ejemplo:
+```bash
+export GROQ_API_KEY="..."
+dictate --stt-provider groq --language es
+```
