@@ -3,7 +3,6 @@ import pathlib
 
 import numpy as np
 
-
 MODULE_PATH = pathlib.Path(__file__).resolve().parents[1] / "whisper-dictation.py"
 
 

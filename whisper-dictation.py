@@ -24,6 +24,8 @@ import urllib.request
 import uuid
 import wave
 
+import numpy as np
+
 try:
     import sounddevice as sd
 except ImportError:  # pragma: no cover
@@ -154,8 +156,7 @@ def download_all_models():
 
 
 def _audio_to_wav_bytes(audio, sample_rate):
-    import numpy as np
-
+    
     pcm = np.clip(audio, -1.0, 1.0)
     pcm = (pcm * 32767).astype(np.int16)
     with io.BytesIO() as bio:
@@ -325,8 +326,20 @@ def _get_audio_backend():
                 source = line.split(":", 1)[1].strip()
         return {"ok": True, "backend": "pulseaudio", "server": server, "default_sink": sink, "default_source": source}
     if shutil.which("pipewire"):
-        return {"ok": True, "backend": "pipewire", "server": "pipewire", "default_sink": "unknown", "default_source": "unknown"}
-    return {"ok": False, "backend": "missing", "server": None, "default_sink": None, "default_source": None}
+        return {
+            "ok": True,
+            "backend": "pipewire",
+            "server": "pipewire",
+            "default_sink": "unknown",
+            "default_source": "unknown",
+        }
+    return {
+        "ok": False,
+        "backend": "missing",
+        "server": None,
+        "default_sink": None,
+        "default_source": None,
+    }
 
 
 def _get_cache_usage(path):
@@ -353,7 +366,21 @@ def _format_bytes(size):
 
 def _get_last_journal_error():
     result = _run_command(
-        ["journalctl", "--user", "-u", SERVICE_NAME, "--since", "24 hours ago", "-p", "err", "-n", "1", "--no-pager", "--output", "short-iso"],
+        [
+            "journalctl",
+            "--user",
+            "-u",
+            SERVICE_NAME,
+            "--since",
+            "24 hours ago",
+            "-p",
+            "err",
+            "-n",
+            "1",
+            "--no-pager",
+            "--output",
+            "short-iso",
+        ],
         timeout=0.8,
     )
     if result is None:
@@ -368,7 +395,17 @@ def _get_last_journal_error():
 
 def _get_last_activity():
     result = _run_command(
-        ["journalctl", "--user", "-u", SERVICE_NAME, "-n", "1", "--no-pager", "--output", "short-iso"],
+        [
+            "journalctl",
+            "--user",
+            "-u",
+            SERVICE_NAME,
+            "-n",
+            "1",
+            "--no-pager",
+            "--output",
+            "short-iso",
+        ],
         timeout=0.8,
     )
     if result is None or result.returncode == 124:
@@ -491,8 +528,7 @@ class Dictation:
                 self.audio_frames.append(indata.copy())
 
     def stop_and_transcribe(self):
-        import numpy as np
-
+        
         with self.lock:
             if not self.recording:
                 return
@@ -611,8 +647,11 @@ def main():
             "También configurable con WHISPER_DICTATION_STT_PROVIDER."
         ),
     )
-    parser.add_argument("--status", action="store_true",
-                        help="Muestra diagnóstico del servicio, modelo, sesión, audio, xdotool y último error del journal.")
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Muestra diagnóstico del servicio, modelo, sesión, audio, xdotool y último error del journal.",
+    )
     parser.add_argument("--json", action="store_true",
                         help="Con --status, emite el diagnóstico en JSON parseable.")
     args = parser.parse_args()
