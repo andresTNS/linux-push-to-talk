@@ -64,9 +64,21 @@ class WhisperFrontendApp:
         actions = ttk.Frame(parent)
         actions.pack(fill="x", pady=(0, 16))
 
-        ttk.Button(actions, text="Iniciar servicio", command=lambda: self._service_action(start_service)).pack(side="left", padx=(0, 8))  # noqa: E501
-        ttk.Button(actions, text="Detener servicio", command=lambda: self._service_action(stop_service)).pack(side="left", padx=(0, 8))  # noqa: E501
-        ttk.Button(actions, text="Reiniciar servicio", command=lambda: self._service_action(restart_service)).pack(side="left", padx=(0, 8))  # noqa: E501
+        ttk.Button(
+            actions,
+            text="Iniciar servicio",
+            command=lambda: self._service_action(start_service),
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            actions,
+            text="Detener servicio",
+            command=lambda: self._service_action(stop_service),
+        ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            actions,
+            text="Reiniciar servicio",
+            command=lambda: self._service_action(restart_service),
+        ).pack(side="left", padx=(0, 8))
         ttk.Button(actions, text="Actualizar estado", command=self._refresh_async).pack(side="left")
 
         summary = ttk.LabelFrame(parent, text="Configuración activa", padding=12)
@@ -84,14 +96,34 @@ class WhisperFrontendApp:
         ttk.Entry(form, textvariable=self.key_var, width=20).grid(row=0, column=1, sticky="w", pady=6)
 
         ttk.Label(form, text="Idioma").grid(row=1, column=0, sticky="w", pady=6)
-        ttk.Combobox(form, textvariable=self.language_var, values=LANGUAGES, state="readonly", width=17).grid(row=1, column=1, sticky="w", pady=6)  # noqa: E501
+        ttk.Combobox(
+            form,
+            textvariable=self.language_var,
+            values=LANGUAGES,
+            state="readonly",
+            width=17,
+        ).grid(row=1, column=1, sticky="w", pady=6)
 
         ttk.Label(form, text="Modelo").grid(row=2, column=0, sticky="w", pady=6)
-        ttk.Combobox(form, textvariable=self.model_var, values=MODELS, state="readonly", width=17).grid(row=2, column=1, sticky="w", pady=6)  # noqa: E501
+        ttk.Combobox(
+            form,
+            textvariable=self.model_var,
+            values=MODELS,
+            state="readonly",
+            width=17,
+        ).grid(row=2, column=1, sticky="w", pady=6)
 
-        ttk.Checkbutton(form, text="Modo toggle", variable=self.toggle_var).grid(row=3, column=0, columnspan=2, sticky="w", pady=6)  # noqa: E501
+        ttk.Checkbutton(
+            form,
+            text="Modo toggle",
+            variable=self.toggle_var,
+        ).grid(row=3, column=0, columnspan=2, sticky="w", pady=6)
 
-        ttk.Button(form, text="Guardar configuración", command=self._save_config).grid(row=4, column=0, pady=(12, 0), sticky="w")  # noqa: E501
+        ttk.Button(
+            form,
+            text="Guardar configuración",
+            command=self._save_config,
+        ).grid(row=4, column=0, pady=(12, 0), sticky="w")
 
     def _build_logs_tab(self, parent):
         ttk.Button(parent, text="Recargar logs", command=self._refresh_async).pack(anchor="w", pady=(0, 8))
