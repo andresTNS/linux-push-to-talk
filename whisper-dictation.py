@@ -616,7 +616,7 @@ class Dictation:
             prev = subprocess.run(clipboard.read_command, capture_output=True)
             subprocess.run(clipboard.write_command, input=text_bytes, check=True)
             if not self._wait_for_clipboard(clipboard, text_bytes):
-                print(f"[!] {clipboard.name} no confirmó el texto nuevo; usando fallback xdotool type.")
+                print(f"[!] {clipboard.name}: no confirmó el texto nuevo; se usa fallback con xdotool type.")
                 return False
 
             for key in paste_keys:
