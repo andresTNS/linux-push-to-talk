@@ -172,8 +172,8 @@ systemctl --user restart "$SERVICE_NAME"
 info "Servicio habilitado y reiniciado."
 
 if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-    warn "~/.local/bin no está en tu PATH."
-    warn "Agrega esta línea a tu ~/.bashrc o ~/.zshrc:"
+    warn "$HOME/.local/bin no está en tu PATH."
+    warn "Agrega esta línea a tu $HOME/.bashrc o $HOME/.zshrc:"
     echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
 fi
 
