@@ -108,8 +108,7 @@ def auto_select_model(quiet=False):
     available = get_available_ram_mb()
     usable = available * 0.75
     candidates = {
-        k: v for k, v in MODEL_REGISTRY.items()
-        if v["ram_mb"] <= usable and v["multilingual"] and v["cpu_viable"]
+        k: v for k, v in MODEL_REGISTRY.items() if v["ram_mb"] <= usable and v["multilingual"] and v["cpu_viable"]
     }
     if not candidates:
         if not quiet:
@@ -156,7 +155,7 @@ def download_all_models():
 
 
 def _audio_to_wav_bytes(audio, sample_rate):
-    
+
     pcm = np.clip(audio, -1.0, 1.0)
     pcm = (pcm * 32767).astype(np.int16)
     with io.BytesIO() as bio:
@@ -172,22 +171,26 @@ def _multipart_body(fields, files):
     boundary = f"----WhisperDictation{uuid.uuid4().hex}"
     chunks = []
     for key, value in fields.items():
-        chunks.extend([
-            f"--{boundary}\r\n".encode(),
-            f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode(),
-            str(value).encode(),
-            b"\r\n",
-        ])
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode(),
+                f'Content-Disposition: form-data; name="{key}"\r\n\r\n'.encode(),
+                str(value).encode(),
+                b"\r\n",
+            ]
+        )
     for key, (filename, content, content_type) in files.items():
-        chunks.extend([
-            f"--{boundary}\r\n".encode(),
-            (
-                f'Content-Disposition: form-data; name="{key}"; filename="{filename}"\r\n'
-                f"Content-Type: {content_type}\r\n\r\n"
-            ).encode(),
-            content,
-            b"\r\n",
-        ])
+        chunks.extend(
+            [
+                f"--{boundary}\r\n".encode(),
+                (
+                    f'Content-Disposition: form-data; name="{key}"; filename="{filename}"\r\n'
+                    f"Content-Type: {content_type}\r\n\r\n"
+                ).encode(),
+                content,
+                b"\r\n",
+            ]
+        )
     chunks.append(f"--{boundary}--\r\n".encode())
     return boundary, b"".join(chunks)
 
@@ -255,12 +258,13 @@ def _command_output(command, timeout=0.8):
     return (result.stdout or result.stderr or "").strip()
 
 
-def _load_status_config():
+def load_runtime_config():
     config = {
         "key": DEFAULT_KEY,
         "toggle": False,
         "language": DEFAULT_LANGUAGE,
         "model": DEFAULT_MODEL,
+        "stt_provider": DEFAULT_STT_PROVIDER,
     }
     try:
         with open(CONFIG_PATH, encoding="utf-8") as f:
@@ -417,7 +421,7 @@ def _get_last_activity():
 
 
 def collect_status(cli_model=DEFAULT_MODEL):
-    config = _load_status_config()
+    config = load_runtime_config()
     configured_model = config.get("model") or cli_model or DEFAULT_MODEL
     if configured_model == "auto":
         model_name = auto_select_model(quiet=True)
@@ -528,7 +532,7 @@ class Dictation:
                 self.audio_frames.append(indata.copy())
 
     def stop_and_transcribe(self):
-        
+
         with self.lock:
             if not self.recording:
                 return
@@ -626,20 +630,26 @@ class Dictation:
 
 def main():
     parser = argparse.ArgumentParser(description="Push-to-talk dictation con Whisper")
-    parser.add_argument("--key", default=DEFAULT_KEY,
-                        help=f"Tecla para activar (default: {DEFAULT_KEY})")
-    parser.add_argument("--model", default=DEFAULT_MODEL,
-                        choices=["auto"] + list(MODEL_REGISTRY.keys()),
-                        help="Modelo Whisper a usar. 'auto' selecciona el mejor según RAM disponible.")
-    parser.add_argument("--language", default=DEFAULT_LANGUAGE,
-                        help="Código ISO del idioma (es, en, fr...) o 'auto' para detección multilingüe.")
-    parser.add_argument("--toggle", action="store_true",
-                        help="Modo toggle: presionar una vez inicia, presionar de nuevo detiene.")
-    parser.add_argument("--download-all", action="store_true",
-                        help="Descarga todos los modelos del registro y sale.")
+    parser.add_argument("--key", default=None, help=f"Tecla para activar (default/config: {DEFAULT_KEY})")
+    parser.add_argument(
+        "--model",
+        default=None,
+        choices=["auto"] + list(MODEL_REGISTRY.keys()),
+        help="Modelo Whisper a usar. 'auto' selecciona el mejor según RAM disponible.",
+    )
+    parser.add_argument(
+        "--language", default=None, help="Código ISO del idioma (es, en, fr...) o 'auto' para detección multilingüe."
+    )
+    parser.add_argument(
+        "--toggle",
+        action="store_true",
+        default=None,
+        help="Modo toggle: presionar una vez inicia, presionar de nuevo detiene.",
+    )
+    parser.add_argument("--download-all", action="store_true", help="Descarga todos los modelos del registro y sale.")
     parser.add_argument(
         "--stt-provider",
-        default=DEFAULT_STT_PROVIDER,
+        default=None,
         choices=["local", "groq"],
         help=(
             "Proveedor de STT. 'local' usa faster-whisper offline; "
@@ -652,12 +662,14 @@ def main():
         action="store_true",
         help="Muestra diagnóstico del servicio, modelo, sesión, audio, xdotool y último error del journal.",
     )
-    parser.add_argument("--json", action="store_true",
-                        help="Con --status, emite el diagnóstico en JSON parseable.")
+    parser.add_argument("--json", action="store_true", help="Con --status, emite el diagnóstico en JSON parseable.")
     args = parser.parse_args()
 
+    runtime_config = load_runtime_config()
+    effective_model = args.model or runtime_config.get("model", DEFAULT_MODEL)
+
     if args.status:
-        report = collect_status(args.model)
+        report = collect_status(effective_model)
         print_status(report, json_output=args.json)
         return
 
@@ -665,20 +677,22 @@ def main():
         download_all_models()
         return
 
-    model_name = auto_select_model() if args.model == "auto" else args.model
-    language = None if args.language == "auto" else args.language
+    effective_key = (args.key or runtime_config.get("key", DEFAULT_KEY)).lower()
+    effective_language = args.language or runtime_config.get("language", DEFAULT_LANGUAGE)
+    effective_toggle = runtime_config.get("toggle", False) if args.toggle is None else args.toggle
+    effective_stt_provider = args.stt_provider or runtime_config.get("stt_provider", DEFAULT_STT_PROVIDER)
+
+    model_name = auto_select_model() if effective_model == "auto" else effective_model
+    language = None if effective_language == "auto" else effective_language
 
     global sd, keyboard
     import sounddevice as sd
     from pynput import keyboard
 
-    dictation = Dictation(model_name, language, args.toggle)
-    dictation.stt_provider = args.stt_provider
-    if args.stt_provider == "groq":
-        dictation.model = None
+    dictation = Dictation(model_name, language, effective_toggle, effective_stt_provider)
 
-    mode = "toggle" if args.toggle else "mantener presionada"
-    print(f"[Whisper Dictation] Tecla activa: {args.key.upper()} ({mode})")
+    mode = "toggle" if effective_toggle else "mantener presionada"
+    print(f"[Whisper Dictation] Tecla activa: {effective_key.upper()} ({mode})")
     print("[Whisper Dictation] Ctrl+C para salir\n")
 
     pressed = False
@@ -689,8 +703,8 @@ def main():
             key_name = key.name if hasattr(key, "name") else key.char
         except AttributeError:
             return
-        if key_name == args.key.lower():
-            if args.toggle:
+        if key_name == effective_key:
+            if effective_toggle:
                 if not pressed:
                     pressed = True
                     dictation.start_recording()
@@ -704,13 +718,13 @@ def main():
 
     def on_release(key):
         nonlocal pressed
-        if args.toggle:
+        if effective_toggle:
             return
         try:
             key_name = key.name if hasattr(key, "name") else key.char
         except AttributeError:
             return
-        if key_name == args.key.lower() and pressed:
+        if key_name == effective_key and pressed:
             pressed = False
             threading.Thread(target=dictation.stop_and_transcribe, daemon=True).start()
 

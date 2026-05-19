@@ -8,7 +8,8 @@ DEFAULT_CONFIG = {
     "key": "f12",
     "toggle": False,
     "language": "es",
-    "model": "base",
+    "model": "auto",
+    "stt_provider": "local",
 }
 
 
