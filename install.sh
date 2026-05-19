@@ -113,6 +113,7 @@ APP_NAME="whisper-dictation"
 VENV_DIR="$HOME/.local/share/${APP_NAME}"
 LOCAL_BIN_DIR="$HOME/.local/bin"
 SYSTEMD_DIR="$HOME/.config/systemd/user"
+AUTOSTART_DIR="$HOME/.config/autostart"
 SERVICE_NAME="whisper-dictation"
 SERVICE_PATH="$SYSTEMD_DIR/${SERVICE_NAME}.service"
 INSTALL_MODE="INSTALL"
@@ -150,7 +151,7 @@ fi
 
 step "Instalando librerías Python (puede tardar varios minutos)..."
 "$VENV_DIR/bin/pip" install --upgrade pip --quiet
-"$VENV_DIR/bin/pip" install faster-whisper sounddevice numpy pynput --quiet
+"$VENV_DIR/bin/pip" install faster-whisper sounddevice numpy pynput pystray pillow --quiet
 info "Librerías Python instaladas."
 
 step "Instalando archivos..."
@@ -162,6 +163,11 @@ cp frontend_config.py "$LOCAL_BIN_DIR/frontend_config.py"
 cp frontend_service.py "$LOCAL_BIN_DIR/frontend_service.py"
 chmod +x "$LOCAL_BIN_DIR/dictate"
 chmod +x "$LOCAL_BIN_DIR/whisper-ptt-gui"
+
+step "Configurando autostart de GUI..."
+mkdir -p "$AUTOSTART_DIR"
+printf '%s\n' "[Desktop Entry]" "Type=Application" "Name=whisper-ptt GUI" "Comment=Frontend de control para whisper-ptt" "Exec=$LOCAL_BIN_DIR/whisper-ptt-gui" "Terminal=false" "X-GNOME-Autostart-enabled=true" > "$AUTOSTART_DIR/whisper-ptt-gui.desktop"
+info "GUI configurada para iniciar al iniciar sesión."
 
 step "Configurando servicio systemd..."
 mkdir -p "$SYSTEMD_DIR"

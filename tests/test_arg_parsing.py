@@ -58,8 +58,8 @@ def test_main_parses_key_model_language_and_toggle(monkeypatch):
     created = {}
 
     class DictationStub:
-        def __init__(self, model_name, language, toggle_mode):
-            created.update(model_name=model_name, language=language, toggle_mode=toggle_mode)
+        def __init__(self, model_name, language, toggle_mode, stt_provider="local"):
+            created.update(model_name=model_name, language=language, toggle_mode=toggle_mode, stt_provider=stt_provider)
 
         def start_recording(self):
             raise AssertionError("listener should not invoke recording during argument parsing")
@@ -77,7 +77,7 @@ def test_main_parses_key_model_language_and_toggle(monkeypatch):
 
     module.main()
 
-    assert created == {"model_name": "small", "language": None, "toggle_mode": True}
+    assert created == {"model_name": "small", "language": None, "toggle_mode": True, "stt_provider": "local"}
 
 
 def test_auto_model_is_resolved_before_dictation_is_created(monkeypatch):
@@ -85,7 +85,7 @@ def test_auto_model_is_resolved_before_dictation_is_created(monkeypatch):
     created = {}
 
     class DictationStub:
-        def __init__(self, model_name, language, toggle_mode):
+        def __init__(self, model_name, language, toggle_mode, stt_provider="local"):
             created["model_name"] = model_name
 
     monkeypatch.setattr(module, "auto_select_model", lambda: "distil-large-v3")

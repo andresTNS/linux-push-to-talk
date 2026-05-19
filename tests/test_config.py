@@ -1,8 +1,12 @@
-import importlib
+import importlib.util
+from pathlib import Path
 
 
 def config_module(monkeypatch, tmp_path):
-    module = importlib.import_module("frontend_config")
+    module_path = Path(__file__).resolve().parents[1] / "frontend_config.py"
+    spec = importlib.util.spec_from_file_location("frontend_config", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
     monkeypatch.setattr(module, "CONFIG_DIR", tmp_path / "whisper-dictation")
     monkeypatch.setattr(module, "CONFIG_PATH", tmp_path / "whisper-dictation" / "config.json")
     return module
@@ -16,7 +20,7 @@ def test_load_config_returns_defaults_when_file_is_missing(monkeypatch, tmp_path
 
 def test_save_config_creates_parent_directory_and_round_trips(monkeypatch, tmp_path):
     module = config_module(monkeypatch, tmp_path)
-    config = {"key": "f10", "toggle": True, "language": "auto", "model": "small"}
+    config = {"key": "f10", "toggle": True, "language": "auto", "model": "small", "stt_provider": "groq"}
 
     module.save_config(config)
 
