@@ -68,7 +68,9 @@ def test_main_parses_key_model_language_and_toggle(monkeypatch):
             raise AssertionError("listener should not invoke transcription during argument parsing")
 
     monkeypatch.setattr(module, "Dictation", DictationStub)
-    monkeypatch.setattr(module.keyboard, "Listener", ListenerStub)
+    keyboard_stub = types.SimpleNamespace(Listener=ListenerStub)
+    monkeypatch.setitem(sys.modules, "pynput", types.SimpleNamespace(keyboard=keyboard_stub))
+    monkeypatch.setitem(sys.modules, "pynput.keyboard", keyboard_stub)
     monkeypatch.setattr(
         sys,
         "argv",
@@ -90,7 +92,9 @@ def test_auto_model_is_resolved_before_dictation_is_created(monkeypatch):
 
     monkeypatch.setattr(module, "auto_select_model", lambda: "distil-large-v3")
     monkeypatch.setattr(module, "Dictation", DictationStub)
-    monkeypatch.setattr(module.keyboard, "Listener", ListenerStub)
+    keyboard_stub = types.SimpleNamespace(Listener=ListenerStub)
+    monkeypatch.setitem(sys.modules, "pynput", types.SimpleNamespace(keyboard=keyboard_stub))
+    monkeypatch.setitem(sys.modules, "pynput.keyboard", keyboard_stub)
     monkeypatch.setattr(sys, "argv", ["whisper-dictation.py", "--model", "auto"])
 
     module.main()

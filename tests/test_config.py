@@ -1,8 +1,12 @@
-import importlib
+import importlib.util
+from pathlib import Path
 
 
 def config_module(monkeypatch, tmp_path):
-    module = importlib.import_module("frontend_config")
+    module_path = Path(__file__).resolve().parents[1] / "frontend_config.py"
+    spec = importlib.util.spec_from_file_location("frontend_config", module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
     monkeypatch.setattr(module, "CONFIG_DIR", tmp_path / "whisper-dictation")
     monkeypatch.setattr(module, "CONFIG_PATH", tmp_path / "whisper-dictation" / "config.json")
     return module

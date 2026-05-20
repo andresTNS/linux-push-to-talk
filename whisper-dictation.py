@@ -36,6 +36,7 @@ try:
 except ImportError:  # pragma: no cover
     keyboard = None
 
+
 # ---------- Configuración por defecto ----------
 DEFAULT_KEY = "f12"
 DEFAULT_MODEL = "auto"
@@ -45,6 +46,8 @@ SERVICE_NAME = "whisper-dictation"
 CONFIG_PATH = os.path.expanduser("~/.config/whisper-dictation/config.json")
 SAMPLE_RATE = 16000
 CHANNELS = 1
+CLIPBOARD_SETTLE_TIMEOUT_SECONDS = 1.0
+CLIPBOARD_RESTORE_DELAY_SECONDS = 0.25
 
 INITIAL_PROMPT = (
     "Transcripción en español con términos técnicos en inglés: "
@@ -491,6 +494,29 @@ def print_status(report, json_output=False):
     print(f"dependencies:   {'ok' if not missing else 'missing ' + ', '.join(missing)}")
 
 
+class ClipboardTool:
+    def __init__(self, name, read_command, write_command):
+        self.name = name
+        self.read_command = read_command
+        self.write_command = write_command
+
+    @classmethod
+    def xclip(cls):
+        return cls(
+            name="xclip",
+            read_command=["xclip", "-selection", "clipboard", "-o"],
+            write_command=["xclip", "-selection", "clipboard"],
+        )
+
+    @classmethod
+    def xsel(cls):
+        return cls(
+            name="xsel",
+            read_command=["xsel", "--clipboard", "--output"],
+            write_command=["xsel", "--clipboard", "--input"],
+        )
+
+
 class Dictation:
     def __init__(self, model_name, language, toggle_mode, stt_provider=DEFAULT_STT_PROVIDER):
         self.stt_provider = stt_provider
@@ -578,42 +604,54 @@ class Dictation:
 
     def _type_text(self, text):
         time.sleep(0.15)
-        if self._try_xclip(text):
+        if self._try_clipboard_paste(ClipboardTool.xclip(), text, ["ctrl+shift+v", "ctrl+v"]):
             return
-        if self._try_xsel(text):
+        if self._try_clipboard_paste(ClipboardTool.xsel(), text, ["ctrl+v"]):
             return
         self._fallback_xdotool(text)
 
-    def _try_xclip(self, text):
+    def _try_clipboard_paste(self, clipboard, text, paste_keys):
+        text_bytes = text.encode("utf-8")
         try:
-            prev = subprocess.run(["xclip", "-selection", "clipboard", "-o"], capture_output=True)
-            subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode("utf-8"), check=True)
-            try:
-                subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+shift+v"], check=True)
-            except subprocess.CalledProcessError:
-                subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True)
-            time.sleep(0.1)
-            if prev.returncode == 0:
-                subprocess.run(["xclip", "-selection", "clipboard"], input=prev.stdout, check=False)
-            return True
+            prev = subprocess.run(clipboard.read_command, capture_output=True)
+            subprocess.run(clipboard.write_command, input=text_bytes, check=True)
+            if not self._wait_for_clipboard(clipboard, text_bytes):
+                print(
+                    f"[!] {clipboard.name}: no confirmó actualización del portapapeles; "
+                    "se usará fallback con xdotool type."
+                )
+                return False
+
+            for key in paste_keys:
+                try:
+                    subprocess.run(["xdotool", "key", "--clearmodifiers", key], check=True)
+                    time.sleep(CLIPBOARD_RESTORE_DELAY_SECONDS)
+                    return True
+                except subprocess.CalledProcessError:
+                    continue
+            return False
         except FileNotFoundError:
             return False
         except subprocess.CalledProcessError:
             return False
+        finally:
+            if "prev" in locals() and prev.returncode == 0:
+                subprocess.run(clipboard.write_command, input=prev.stdout, check=False)
+
+    def _wait_for_clipboard(self, clipboard, expected):
+        deadline = time.monotonic() + CLIPBOARD_SETTLE_TIMEOUT_SECONDS
+        while time.monotonic() < deadline:
+            current = subprocess.run(clipboard.read_command, capture_output=True)
+            if current.returncode == 0 and current.stdout == expected:
+                return True
+            time.sleep(0.05)
+        return False
+
+    def _try_xclip(self, text):
+        return self._try_clipboard_paste(ClipboardTool.xclip(), text, ["ctrl+shift+v", "ctrl+v"])
 
     def _try_xsel(self, text):
-        try:
-            prev = subprocess.run(["xsel", "--clipboard", "--output"], capture_output=True)
-            subprocess.run(["xsel", "--clipboard", "--input"], input=text.encode("utf-8"), check=True)
-            subprocess.run(["xdotool", "key", "--clearmodifiers", "ctrl+v"], check=True)
-            time.sleep(0.1)
-            if prev.returncode == 0:
-                subprocess.run(["xsel", "--clipboard", "--input"], input=prev.stdout, check=False)
-            return True
-        except FileNotFoundError:
-            return False
-        except subprocess.CalledProcessError:
-            return False
+        return self._try_clipboard_paste(ClipboardTool.xsel(), text, ["ctrl+v"])
 
     def _fallback_xdotool(self, text):
         print("[!] xclip y xsel no disponibles. Usando xdotool type (puede perder tildes).")
